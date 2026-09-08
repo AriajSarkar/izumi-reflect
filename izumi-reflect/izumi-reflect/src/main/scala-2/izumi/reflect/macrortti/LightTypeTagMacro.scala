@@ -68,7 +68,7 @@ private[reflect] class LightTypeTagMacro0[C <: blackbox.Context](val c: C)(logge
     lttEnabled = macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.ltt`, LightTypeTagImpl.lttCacheEnabled),
     fullDbEnabled = macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.db.full`, LightTypeTagImpl.fullDbCacheEnabled),
     inheritanceDbEnabled =
-      macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.db.inheritance`, LightTypeTagImpl.inheritanceDbCacheEnabled),
+      macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.db.inheritance`, LightTypeTagImpl.inheritanceDbCacheEnabled)
   )
 
   final def makeStrongHKTag[ArgStruct: c.WeakTypeTag]: c.Expr[LTag.StrongHK[ArgStruct]] = {

@@ -114,7 +114,7 @@ final class LightTypeTagImpl[U <: Universe with Singleton](
   logger: TrivialLogger,
   lttEnabled: Boolean = LightTypeTagImpl.lttCacheEnabled,
   fullDbEnabled: Boolean = LightTypeTagImpl.fullDbCacheEnabled,
-  inheritanceDbEnabled: Boolean = LightTypeTagImpl.inheritanceDbCacheEnabled,
+  inheritanceDbEnabled: Boolean = LightTypeTagImpl.inheritanceDbCacheEnabled
 ) {
 
   import u._
