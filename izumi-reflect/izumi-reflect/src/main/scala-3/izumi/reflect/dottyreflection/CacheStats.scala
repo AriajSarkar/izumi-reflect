@@ -5,23 +5,15 @@ import izumi.reflect.DebugProperties
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Cache statistics for compile-time LightTypeTag caching.
- * 
- * Enable stats output by setting system property:
- *   -Dizumi.reflect.rtti.cache.compile.stats=true
- */
+  * Cache statistics for compile-time LightTypeTag caching.
+  *
+  * Enable stats output by setting system property:
+  *   -Dizumi.reflect.rtti.cache.compile.stats=true
+  */
 object CacheStats {
   // Term cache (tree-level)
   val termCacheHits = new AtomicLong(0)
   val termCacheMisses = new AtomicLong(0)
-
-  // LTT cache
-  val lttCacheHits = new AtomicLong(0)
-  val lttCacheMisses = new AtomicLong(0)
-
-  // Serialized cache
-  val serializedCacheHits = new AtomicLong(0)
-  val serializedCacheMisses = new AtomicLong(0)
 
   // FullDB cache
   val fullDbCacheHits = new AtomicLong(0)
@@ -41,12 +33,6 @@ object CacheStats {
   def termHit(): Unit = if (statsEnabled) termCacheHits.incrementAndGet()
   def termMiss(): Unit = if (statsEnabled) termCacheMisses.incrementAndGet()
 
-  def lttHit(): Unit = if (statsEnabled) lttCacheHits.incrementAndGet()
-  def lttMiss(): Unit = if (statsEnabled) lttCacheMisses.incrementAndGet()
-
-  def serializedHit(): Unit = if (statsEnabled) serializedCacheHits.incrementAndGet()
-  def serializedMiss(): Unit = if (statsEnabled) serializedCacheMisses.incrementAndGet()
-
   def fullDbHit(): Unit = if (statsEnabled) fullDbCacheHits.incrementAndGet()
   def fullDbMiss(): Unit = if (statsEnabled) fullDbCacheMisses.incrementAndGet()
 
@@ -55,14 +41,18 @@ object CacheStats {
 
   def printStats(): Unit = {
     if (statsEnabled) {
+      def row(name: String, hits: Long, misses: Long): String = {
+        val total = hits + misses
+        val rate = if (total == 0) 100.0 else hits.toDouble / total * 100
+        f"$name%-20s $hits%8d $misses%8d $rate%5.1f%%\n"
+      }
       val sb = new StringBuilder
       sb.append("\n=== izumi-reflect compile-time cache stats ===\n")
-      sb.append(f"termCache:        hits=${termCacheHits.get()}%6d  misses=${termCacheMisses.get()}%6d\n")
-      sb.append(f"lttCache:         hits=${lttCacheHits.get()}%6d  misses=${lttCacheMisses.get()}%6d\n")
-      sb.append(f"serializedCache:  hits=${serializedCacheHits.get()}%6d  misses=${serializedCacheMisses.get()}%6d\n")
-      sb.append(f"fullDbCache:      hits=${fullDbCacheHits.get()}%6d  misses=${fullDbCacheMisses.get()}%6d\n")
-      sb.append(f"inheritanceDbCache: hits=${inheritanceDbCacheHits.get()}%6d  misses=${inheritanceDbCacheMisses.get()}%6d\n")
-      sb.append("===============================================\n")
+      sb.append(f"${"cache"}%-20s ${"hits"}%8s ${"misses"}%8s ${"hit%"}%6s\n")
+      sb.append(row("termCache", termCacheHits.get(), termCacheMisses.get()))
+      sb.append(row("fullDbCache", fullDbCacheHits.get(), fullDbCacheMisses.get()))
+      sb.append(row("inheritanceDbCache", inheritanceDbCacheHits.get(), inheritanceDbCacheMisses.get()))
+      sb.append("==============================================\n")
       System.err.println(sb.toString())
     }
   }

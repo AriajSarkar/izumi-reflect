@@ -31,7 +31,7 @@ final class LightTypeTagMacro(override val c: blackbox.Context)
 
 private[reflect] object LightTypeTagMacro0 {
 
-  private lazy val serializedCache = new java.util.IdentityHashMap[LightTypeTag, LightTypeTag.Serialized]()
+  // Tree-level cache of typechecked LTT parse Trees per inspected Type
   private val treeCache = new java.util.WeakHashMap[Any, Any]()
 
   /** master switch for compile-time caching */
@@ -41,8 +41,8 @@ private[reflect] object LightTypeTagMacro0 {
       .getOrElse(true)
   }
 
-  /** Serialized form cache flag (controlled by macro cache flag) */
-  private[macrortti] lazy val serializedCacheEnabled: Boolean = {
+  /** Tree cache flag (controlled by macro cache flag) */
+  private[macrortti] lazy val treeCacheEnabled: Boolean = {
     System
       .getProperty(DebugProperties.`izumi.reflect.rtti.cache.compile.macro`).asBoolean()
       .getOrElse(true)
@@ -55,7 +55,21 @@ private[reflect] class LightTypeTagMacro0[C <: blackbox.Context](val c: C)(logge
   import c.universe._
 
   protected final def cacheEnabled: Boolean = !c.settings.contains(s"${DebugProperties.`izumi.reflect.rtti.cache.compile`}=false")
-  protected final val impl = new LightTypeTagImpl[c.universe.type](c.universe, withCache = cacheEnabled, logger)
+  protected final def treeEnabled: Boolean =
+    cacheEnabled &&
+      compileCacheEnabled && treeCacheEnabled &&
+      !c.settings.contains(s"${DebugProperties.`izumi.reflect.rtti.cache.compile.macro`}=false")
+  private def macroSettingEnabled(key: String, sysFlag: Boolean): Boolean =
+    sysFlag && !c.settings.contains(s"$key=false")
+  protected final val impl = new LightTypeTagImpl[c.universe.type](
+    c.universe,
+    withCache = cacheEnabled,
+    logger,
+    lttEnabled = macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.ltt`, LightTypeTagImpl.lttCacheEnabled),
+    fullDbEnabled = macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.db.full`, LightTypeTagImpl.fullDbCacheEnabled),
+    inheritanceDbEnabled =
+      macroSettingEnabled(DebugProperties.`izumi.reflect.rtti.cache.compile.db.inheritance`, LightTypeTagImpl.inheritanceDbCacheEnabled),
+  )
 
   final def makeStrongHKTag[ArgStruct: c.WeakTypeTag]: c.Expr[LTag.StrongHK[ArgStruct]] = {
     val tpe = unpackArgStruct(weakTypeOf[ArgStruct])
@@ -90,8 +104,7 @@ private[reflect] class LightTypeTagMacro0[C <: blackbox.Context](val c: C)(logge
   }
 
   final def makeParsedLightTypeTagImpl(tpe: Type): c.Expr[LightTypeTag] = {
-    val serCacheEnabled = compileCacheEnabled && serializedCacheEnabled
-    if (serCacheEnabled) {
+    if (treeEnabled) {
       treeCache.synchronized {
         val cached = treeCache.get(tpe)
         if (cached != null) {
@@ -103,7 +116,7 @@ private[reflect] class LightTypeTagMacro0[C <: blackbox.Context](val c: C)(logge
     val res = impl.makeFullTagImpl(tpe)
     val expr = makeParsedLightTypeTagInternal(res)
 
-    if (serCacheEnabled) {
+    if (treeEnabled) {
       treeCache.synchronized {
         treeCache.put(tpe, expr.tree)
       }
@@ -114,23 +127,7 @@ private[reflect] class LightTypeTagMacro0[C <: blackbox.Context](val c: C)(logge
   private def makeParsedLightTypeTagInternal(ltt: LightTypeTag): c.Expr[LightTypeTag] = {
     logger.log(s"LightTypeTagImpl: created LightTypeTag: $ltt")
 
-    val serCacheEnabled = compileCacheEnabled && serializedCacheEnabled
-    
-    // Try to get cached serialized form (synchronized because WeakHashMap is not thread-safe)
-    val serialized = if (serCacheEnabled) {
-      serializedCache.synchronized {
-        val cached = serializedCache.get(ltt)
-        if (cached != null) {
-          cached
-        } else {
-          val ser = ltt.serialize()
-          serializedCache.put(ltt, ser)
-          ser
-        }
-      }
-    } else {
-      ltt.serialize()
-    }
+    val serialized = ltt.serialize()
     
     val hashCodeRef = serialized.hash
     val strRef = serialized.ref

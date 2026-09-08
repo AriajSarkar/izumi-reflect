@@ -11,13 +11,9 @@ import scala.quoted.{Expr, Quotes, Type}
 object Inspect {
   private type TypeReprKey = Quotes#reflectModule#TypeRepr
   private type TermValue = Quotes#reflectModule#Term
-  
-  // Tree-level cache: stores the generated Term for reuse across macro invocations
-  private val termCache = new ConcurrentHashMap[TypeReprKey, TermValue]()
-  
-  // Value caches (fallback)
-  private val lttCache = new ConcurrentHashMap[TypeReprKey, SoftReference[LightTypeTag]]()
-  private val serializedCache = new java.util.IdentityHashMap[LightTypeTag, LightTypeTag.Serialized]()
+
+  // Tree-level cache of generated Terms, values held via SoftReference
+  private val termCache = new ConcurrentHashMap[TypeReprKey, SoftReference[TermValue]]()
 
   // Master switch for all compile-time caching
   private def compileCacheEnabled: Boolean = {
@@ -27,16 +23,8 @@ object Inspect {
       .getOrElse(true)
   }
 
-  // Individual LTT cache flag
-  private def lttCacheEnabled: Boolean = {
-    import izumi.reflect.internal.fundamentals.platform.strings.IzString.toRichString
-    Option(System.getProperty(DebugProperties.`izumi.reflect.rtti.cache.compile.ltt`))
-      .flatMap(_.asBoolean())
-      .getOrElse(true)
-  }
-
-  // Serialized form cache flag (controlled by macro cache flag)
-  private def serializedCacheEnabled: Boolean = {
+  // Term cache flag, see `izumi.reflect.rtti.cache.compile.macro`
+  private def termCacheEnabled: Boolean = {
     import izumi.reflect.internal.fundamentals.platform.strings.IzString.toRichString
     Option(System.getProperty(DebugProperties.`izumi.reflect.rtti.cache.compile.macro`))
       .flatMap(_.asBoolean())
@@ -54,41 +42,28 @@ object Inspect {
   def inspectTypeRepr(using qctx: Quotes)(typeRepr: qctx.reflect.TypeRepr): Expr[LightTypeTag] = {
     import qctx.reflect.*
 
-    val cacheEnabled = compileCacheEnabled && lttCacheEnabled
-    
+    val cacheEnabled = compileCacheEnabled && termCacheEnabled
+
     val cacheKey: TypeReprKey = typeRepr.dealias.simplified
 
     if (cacheEnabled) {
-      val cachedTerm = termCache.get(cacheKey)
+      val cachedRef = termCache.get(cacheKey)
+      val cachedTerm =
+        if (cachedRef == null) null
+        else cachedRef.get()
       if (cachedTerm != null) {
         CacheStats.termHit()
         return cachedTerm.asInstanceOf[qctx.reflect.Term].asExprOf[LightTypeTag]
       } else {
+        if (cachedRef != null) termCache.remove(cacheKey, cachedRef) // reclaimed by GC
         CacheStats.termMiss()
       }
     }
 
-    val cachedLtt: Option[LightTypeTag] =
-      if (cacheEnabled) {
-        val result = Option(lttCache.get(cacheKey)).flatMap(sr => Option(sr.get()))
-        if (result.isDefined) CacheStats.lttHit() else CacheStats.lttMiss()
-        result
-      } else {
-        None
-      }
-
-    val ltt = cachedLtt.getOrElse {
-      val ref = TypeInspections(typeRepr)
-      val fullDb = TypeInspections.fullDb(typeRepr)
-      val nameDb = TypeInspections.unappliedDb(typeRepr)
-      val newLtt = LightTypeTag(ref, fullDb, nameDb)
-
-      if (cacheEnabled) {
-        lttCache.put(cacheKey, new SoftReference(newLtt))
-      }
-
-      newLtt
-    }
+    val ref = TypeInspections(typeRepr)
+    val fullDb = TypeInspections.fullDb(typeRepr)
+    val nameDb = TypeInspections.unappliedDb(typeRepr)
+    val ltt = LightTypeTag(ref, fullDb, nameDb)
 
     makeParsedLightTypeTagImpl(ltt, cacheKey, cacheEnabled)
   }
@@ -106,26 +81,8 @@ object Inspect {
 
   private def makeParsedLightTypeTagImpl(ltt: LightTypeTag, cacheKey: TypeReprKey, cacheEnabled: Boolean)(using qctx: Quotes): Expr[LightTypeTag] = {
     import qctx.reflect.*
-    
-    val serCacheEnabled = compileCacheEnabled && serializedCacheEnabled
-    
-    // Try to get cached serialized form (synchronized because IdentityHashMap is not thread-safe)
-    val serialized = if (serCacheEnabled) {
-      serializedCache.synchronized {
-        val cached = serializedCache.get(ltt)
-        if (cached != null) {
-          CacheStats.serializedHit()
-          cached
-        } else {
-          CacheStats.serializedMiss()
-          val ser = ltt.serialize()
-          serializedCache.put(ltt, ser)
-          ser
-        }
-      }
-    } else {
-      ltt.serialize()
-    }
+
+    val serialized = ltt.serialize()
     
     val hashCodeRef = serialized.hash
     val strRef = serialized.ref
@@ -142,7 +99,7 @@ object Inspect {
     val resultExpr = '{ LightTypeTag.parse(${ Expr(hashCodeRef) }, ${ Expr(strRef) }, ${ Expr(strDBs) }, ${ Expr(LightTypeTag.currentBinaryFormatVersion) }) }
 
     if (cacheEnabled) {
-      termCache.put(cacheKey, resultExpr.asTerm.asInstanceOf[TermValue])
+      termCache.put(cacheKey, new SoftReference(resultExpr.asTerm.asInstanceOf[TermValue]))
     }
 
     resultExpr
@@ -150,26 +107,8 @@ object Inspect {
 
   def makeParsedLightTypeTagImpl(ltt: LightTypeTag)(using qctx: Quotes): Expr[LightTypeTag] = {
     import qctx.reflect.*
-    
-    val serCacheEnabled = compileCacheEnabled && serializedCacheEnabled
-    
-    // Try to get cached serialized form (synchronized because WeakHashMap is not thread-safe)
-    val serialized = if (serCacheEnabled) {
-      serializedCache.synchronized {
-        val cached = serializedCache.get(ltt)
-        if (cached != null) {
-          CacheStats.serializedHit()
-          cached
-        } else {
-          CacheStats.serializedMiss()
-          val ser = ltt.serialize()
-          serializedCache.put(ltt, ser)
-          ser
-        }
-      }
-    } else {
-      ltt.serialize()
-    }
+
+    val serialized = ltt.serialize()
     
     val hashCodeRef = serialized.hash
     val strRef = serialized.ref

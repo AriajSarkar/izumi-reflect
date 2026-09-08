@@ -53,6 +53,7 @@ object DebugProperties {
   /**
     * Add compiler option `-Xmacro-settings:izumi.reflect.rtti.cache.compile.ltt=false` to disable
     * compile-time caching of LightTypeTag results specifically.
+    * On Scala 3 this flag is a no-op (the term cache subsumes it).
     *
     * {{{
     *   scalacOptions += "-Xmacro-settings:izumi.reflect.rtti.cache.compile.ltt=false"

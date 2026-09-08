@@ -108,7 +108,14 @@ object LightTypeTagImpl {
 
 }
 
-final class LightTypeTagImpl[U <: Universe with Singleton](val u: U, withCache: Boolean, logger: TrivialLogger) {
+final class LightTypeTagImpl[U <: Universe with Singleton](
+  val u: U,
+  withCache: Boolean,
+  logger: TrivialLogger,
+  lttEnabled: Boolean = LightTypeTagImpl.lttCacheEnabled,
+  fullDbEnabled: Boolean = LightTypeTagImpl.fullDbCacheEnabled,
+  inheritanceDbEnabled: Boolean = LightTypeTagImpl.inheritanceDbCacheEnabled,
+) {
 
   import u._
 
@@ -126,7 +133,7 @@ final class LightTypeTagImpl[U <: Universe with Singleton](val u: U, withCache: 
     val cacheEnabled = withCache && LightTypeTagImpl.compileCacheEnabled
 
     // Check LTT cache first (most beneficial - avoids all computation)
-    if (cacheEnabled && LightTypeTagImpl.lttCacheEnabled) {
+    if (cacheEnabled && lttEnabled) {
       val cached = LightTypeTagImpl.lttCache.synchronized(LightTypeTagImpl.lttCache.get(tpe))
       if (cached != null) return cached
     }
@@ -141,8 +148,8 @@ final class LightTypeTagImpl[U <: Universe with Singleton](val u: U, withCache: 
       }.result()
 
     // FullDB cache
-    val fullDb: Map[AbstractReference, Set[AbstractReference]] = 
-      if (cacheEnabled && LightTypeTagImpl.fullDbCacheEnabled) {
+    val fullDb: Map[AbstractReference, Set[AbstractReference]] =
+      if (cacheEnabled && fullDbEnabled) {
         val cached = LightTypeTagImpl.fullDbCache.synchronized(LightTypeTagImpl.fullDbCache.get(tpe))
         if (cached != null) {
           cached
@@ -156,8 +163,8 @@ final class LightTypeTagImpl[U <: Universe with Singleton](val u: U, withCache: 
       }
 
     // InheritanceDB cache
-    val unappliedDb: Map[NameReference, Set[NameReference]] = 
-      if (cacheEnabled && LightTypeTagImpl.inheritanceDbCacheEnabled) {
+    val unappliedDb: Map[NameReference, Set[NameReference]] =
+      if (cacheEnabled && inheritanceDbEnabled) {
         val cached = LightTypeTagImpl.inheritanceDbCache.synchronized(LightTypeTagImpl.inheritanceDbCache.get(tpe))
         if (cached != null) {
           cached
@@ -173,7 +180,7 @@ final class LightTypeTagImpl[U <: Universe with Singleton](val u: U, withCache: 
     val ltt = LightTypeTag(lttRef, fullDb, unappliedDb)
 
     // Store in LTT cache
-    if (cacheEnabled && LightTypeTagImpl.lttCacheEnabled) {
+    if (cacheEnabled && lttEnabled) {
       LightTypeTagImpl.lttCache.synchronized(LightTypeTagImpl.lttCache.put(tpe, ltt))
     }
 
